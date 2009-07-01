@@ -1,0 +1,43 @@
+nginx_upstream_jvm_route
+-------
+
+This module achieves session stickiness with the session cookie. If the cookie is absent, the module will be a normal Round-Robin upstream module.
+
+INSTALLATION
+    
+    cd nginx-0.7.59 # or whatever
+    patch -p0 < /path/to/this/directory/jvm_route.patch
+  
+compile nginx with the following addition option:
+
+  --add-module=/path/to/this/directory
+
+EXAMPLE
+
+upstream backend {
+    server 192.168.0.100 srun_id=a;
+    server 192.168.0.100 srun_id=b;
+    server 192.168.0.100 srun_id=c;
+    server 192.168.0.100 srun_id=d;
+
+    jvm_route $cookie_JSESSIONID;
+}
+
+DIRECTIVES
+
+    jvm_route
+
+    syntax: jvm_route $cookie_COOKIE [reverse]
+    default: none
+    context: upstream
+    description: This directive specifies the session cookie name(0.7.24+). With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, while the worker name is in the tail of the cookie. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
+    
+
+    server
+
+    Every syntax is the same with the official directive except the parameter of 'srun_id' which identified the backend JVM's name by cookie. The default srun_id's value is 'a';
+ 
+
+Note: This is a third-party module. And you need careful test before using this module in your product environment.
+
+Questions/patches may be directed to Weibin Yao, yaoweibin@gmail.com.
