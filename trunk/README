@@ -16,9 +16,9 @@ EXAMPLE
 
 upstream backend {
     server 192.168.0.100 srun_id=a;
-    server 192.168.0.100 srun_id=b;
-    server 192.168.0.100 srun_id=c;
-    server 192.168.0.100 srun_id=d;
+    server 192.168.0.101 srun_id=b;
+    server 192.168.0.102 srun_id=c;
+    server 192.168.0.103 srun_id=d;
 
     jvm_route $cookie_JSESSIONID;
 }
