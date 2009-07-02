@@ -14,6 +14,7 @@ compile nginx with the following addition option:
 
 EXAMPLE
 
+1.For resin
 upstream backend {
     server 192.168.0.100 srun_id=a;
     server 192.168.0.101 srun_id=b;
@@ -21,6 +22,15 @@ upstream backend {
     server 192.168.0.103 srun_id=d;
 
     jvm_route $cookie_JSESSIONID;
+}
+2.For tomcat
+upstream backend {
+    server 192.168.0.100 srun_id=a;
+    server 192.168.0.101 srun_id=b;
+    server 192.168.0.102 srun_id=c;
+    server 192.168.0.103 srun_id=d;
+
+    jvm_route $cookie_JSESSIONID reverse;
 }
 
 DIRECTIVES
@@ -30,8 +40,8 @@ DIRECTIVES
     syntax: jvm_route $cookie_COOKIE [reverse]
     default: none
     context: upstream
-    description: This directive specifies the session cookie name(0.7.24+). With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, while the worker name is in the tail of the cookie. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
-    
+    description: This directive specifies the session cookie name(0.7.24+). With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
+    If the request fails to be sent to the chosen backend server, It will try another server with the Round-Robin mode until all the upstream servers tried. The directive proxy_next_upstream can specify in what cases the request will be transmitted to the next server. 
 
     server
 
