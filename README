@@ -40,8 +40,9 @@ DIRECTIVES
     syntax: jvm_route $cookie_COOKIE [reverse]
     default: none
     context: upstream
-    description: This directive specifies the session cookie name(0.7.24+). With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
-    If the request fails to be sent to the chosen backend server, It will try another server with the Round-Robin mode until all the upstream servers tried. The directive proxy_next_upstream can specify in what cases the request will be transmitted to the next server. 
+    description: This directive specifies the session cookie name(0.7.24+). The cookie name is case-insensitive. With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
+    I notice that when the JSESSIONID appears in the URI after a semicolon, which is like 'http://foo.bar.com/abc;jessionid=a****', the jessionid will be treated as a cookie!
+    If the request fails to be sent to the chosen backend server, It will try another server with the Round-Robin mode until all the upstream servers tried. The directive proxy_next_upstream can specify in what cases the request will be transmitted to the next server. If you want to force the session sticky, you can set 'proxy_next_upstream off'.
 
     server
 
