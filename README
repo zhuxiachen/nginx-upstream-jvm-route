@@ -1,7 +1,7 @@
 nginx_upstream_jvm_route
 -------
 
-This module achieves session stickiness with the session cookie. If the cookie is absent, the module will be a normal Round-Robin upstream module.
+This module achieves session stickiness with the session cookie. If the session is not in the cookie or URL, the module will be a normal Round-Robin upstream module.
 
 INSTALLATION
     
@@ -21,7 +21,7 @@ upstream backend {
     server 192.168.0.102 srun_id=c;
     server 192.168.0.103 srun_id=d;
 
-    jvm_route $cookie_JSESSIONID;
+    jvm_route $cookie_JSESSIONID|sessionid;
 }
 2.For tomcat
 upstream backend {
@@ -30,18 +30,19 @@ upstream backend {
     server 192.168.0.102 srun_id=c;
     server 192.168.0.103 srun_id=d;
 
-    jvm_route $cookie_JSESSIONID reverse;
+    jvm_route $cookie_JSESSIONID|sessionid reverse;
 }
 
 DIRECTIVES
 
     jvm_route
 
-    syntax: jvm_route $cookie_COOKIE [reverse]
+    syntax: jvm_route $cookie_SESSION_COOKIE[|session_url] [reverse]
     default: none
     context: upstream
-    description: This directive specifies the session cookie name(0.7.24+). The cookie name is case-insensitive. With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
-    I notice that when the JSESSIONID appears in the URI after a semicolon, which is like 'http://foo.bar.com/abc;jessionid=a****', the jessionid will be treated as a cookie!
+    description: 
+    '$cookie_SESSION_COOKIE' specifies the session cookie name(0.7.24+). 'session_url' specifies a different session name in the URL when the client does not accept a cookie. The session name is case-insensitive. In this module, if it does not find the session_url, it will use the session cookie name instead. So if the session name in cookie is the name with its in URL, you don't need give the session_url name.  
+    With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
     If the request fails to be sent to the chosen backend server, It will try another server with the Round-Robin mode until all the upstream servers tried. The directive proxy_next_upstream can specify in what cases the request will be transmitted to the next server. If you want to force the session sticky, you can set 'proxy_next_upstream off'.
 
     server
