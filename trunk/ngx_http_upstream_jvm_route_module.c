@@ -100,6 +100,61 @@ ngx_strncmp_r(u_char *s1, u_char *s2, size_t len1, size_t len2)
     return s1[len1] - s2[len2];
 }
 
+static ngx_int_t 
+ngx_strntok(u_char *s, const char *delim, size_t len, size_t count)
+{
+    ngx_uint_t i, j;
+
+    for (i = 0; i < len; i++) {
+        for (j = 0; j < count; j++) {
+            if (s[i] == delim[j])
+                return i;
+        }
+    }
+
+    return -1;
+}
+
+static u_char *
+ngx_strncasestrn(u_char *s1, u_char *s2, size_t len1, size_t len2)
+{
+    u_char  c1, c2;
+    size_t  n;
+
+    if (len2 == 0 || len1 == 0) {
+        return NULL;
+    }
+
+    c2 = *s2++;
+    c2  = (c2 >= 'A' && c2 <= 'Z') ? (c2 | 0x20) : c2;
+
+    n = len2 - 1;
+
+    do {
+        do {
+            if (len1-- == 0) {
+                return NULL;
+            }
+
+            c1 = *s1++;
+
+            if (c1 == 0) {
+                return NULL;
+            }
+
+            c1  = (c1 >= 'A' && c1 <= 'Z') ? (c1 | 0x20) : c1;
+
+        } while (c1 != c2 || c1 != c2);
+
+        if (n > len1) {
+            return NULL;
+        }
+
+    } while (ngx_strncasecmp(s1, s2, n) != 0);
+
+    return --s1;
+}
+
 static ngx_int_t
 ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us)
 {
@@ -157,15 +212,78 @@ ngx_http_upstream_jvm_route_get_socket(ngx_http_request_t *r,
 }
 
 static ngx_int_t
+ngx_http_upstream_jvm_route_get_session_value(ngx_http_request_t *r,
+    ngx_http_upstream_srv_conf_t *us, ngx_str_t *val)
+{
+    ngx_str_t *name;
+    ngx_int_t i; 
+    size_t offset;
+    u_char *start;
+
+    if (ngx_http_script_run(r, val, us->lengths, 0, us->values) == NULL) {
+        return NGX_ERROR;
+    }
+
+    /* session in cookie */
+    if (val->len > 0) {
+        i = ngx_strntok(val->data, ";,", val->len, sizeof(";,")-1);
+        if (i > 0) {
+            val->len = i;
+        }
+    }
+    else {
+        /* session in url */
+
+        if (us->session_url.len != 0) {
+            name = &us->session_url;
+        }
+        else {
+            name = &us->session_cookie;
+        }
+
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "jvm_route# URI: \"%V\", session_name: \"%V\"", &r->uri, name);
+
+        start = ngx_strncasestrn(r->uri.data, name->data, r->uri.len, name->len);
+        if (start != NULL) {
+            start = start + name->len;
+            while (*start != '=') {
+                start++;
+            }
+
+            start++;
+            offset = start - r->uri.data;
+            if (offset < r->uri.len) {
+                val->data = start;
+
+                i = ngx_strntok(start, "?&;", r->uri.len - offset, sizeof("?&;")-1);
+                if (i > 0) {
+                    val->len = i;
+                }
+                else {
+                    val->len = r->uri.len - offset;
+                }
+            }
+        }
+    }
+
+    return NGX_OK;
+}
+
+static ngx_int_t
 ngx_http_upstream_init_jvm_route_peer(ngx_http_request_t *r,
     ngx_http_upstream_srv_conf_t *us)
 {
     ngx_str_t                                 val;
     ngx_http_upstream_jvm_route_peer_data_t  *jrp;
 
-    if (ngx_http_script_run(r, &val, us->lengths, 0, us->values) == NULL) {
+    if (ngx_http_upstream_jvm_route_get_session_value(r, us, &val)) {
         return NGX_ERROR;
-    }
+    } 
+
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "jvm_route# session_cookie:\"%V\", session_url:\"%V\", session_value:\"%V\"",
+            &us->session_cookie, &us->session_url, &val);
 
     jrp = ngx_pcalloc(r->pool, sizeof(ngx_http_upstream_jvm_route_peer_data_t));
     if (jrp == NULL) {
@@ -187,7 +305,6 @@ ngx_http_upstream_init_jvm_route_peer(ngx_http_request_t *r,
     if (jrp->cookie.len > 0) {
         ngx_http_upstream_jvm_route_get_socket(r, jrp, us);
     }
-
 
     return NGX_OK;
 }
@@ -291,12 +408,48 @@ ngx_http_upstream_jvm_route(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_upstream_srv_conf_t        *uscf;
     ngx_http_script_compile_t            sc;
-    ngx_str_t                           *value;
+    ngx_uint_t                           i, len;
+    ngx_str_t                           *value, *val_cookie;
     ngx_array_t                         *vars_lengths, *vars_values;
 
     value = cf->args->elts;
 
     uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
+
+    if (value[1].len > 8 || ngx_strncmp(value[1].data, "$cookie_", 8) == 0 ) {
+        for (i = 8; i < value[1].len; i++) {
+            if (value[1].data[i] == '|') { 
+                break;
+            }
+        }
+
+        len = i;
+
+        uscf->session_cookie.data = &value[1].data[8] ;
+        uscf->session_cookie.len = len - 8;
+
+        if (len == value[1].len) {
+            val_cookie = &value[1];
+
+            uscf->session_url.data = NULL;
+            uscf->session_url.len = 0;
+        }
+        else {
+            val_cookie = ngx_palloc(cf->pool, sizeof(ngx_str_t));
+            if (val_cookie == NULL) {
+                return NGX_CONF_ERROR;
+            }
+            val_cookie->data = &value[1].data[0]; 
+            val_cookie->len = len; 
+
+            len ++;
+            uscf->session_url.data = &value[1].data[len];
+            uscf->session_url.len = value[1].len - len;
+        }
+    }
+    else {
+        return NGX_CONF_ERROR;
+    }
 
     ngx_memzero(&sc, sizeof(ngx_http_script_compile_t));
 
@@ -304,7 +457,7 @@ ngx_http_upstream_jvm_route(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     vars_values = NULL;
 
     sc.cf = cf;
-    sc.source = &value[1];
+    sc.source = val_cookie;
     sc.lengths = &vars_lengths;
     sc.values = &vars_values;
     sc.complete_lengths = 1;
