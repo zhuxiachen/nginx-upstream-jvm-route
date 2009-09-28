@@ -1,5 +1,4 @@
 #labels nginx,resin,session,sticky
-
 = Nginx's configure =
 {{{
 upstream backend {
@@ -10,7 +9,7 @@ upstream backend {
 }
 }}}
 = Resin's configure =
-For all resin servers
+*For all resin servers*
 {{{
     <server id="a" address="192.168.0.100" port="8080">
     <!-- server2 address=192.168.0.100 -->
@@ -23,11 +22,15 @@ For all resin servers
 }}}
 
 And start each resin instances like this:
-server a
+
+*server a*
+
 {{{
 shell $> /usr/local/resin/bin/httpd.sh -server a start
 }}}
-server b
+
+*server b*
+
 {{{
 shell $> /usr/local/resin/bin/httpd.sh -server b start
 }}}
