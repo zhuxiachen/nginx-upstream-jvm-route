@@ -12,27 +12,6 @@ compile nginx with the following addition option:
 
   --add-module=/path/to/this/directory
 
-EXAMPLE
-
-1.For resin
-upstream backend {
-    server 192.168.0.100 srun_id=a;
-    server 192.168.0.101 srun_id=b;
-    server 192.168.0.102 srun_id=c;
-    server 192.168.0.103 srun_id=d;
-
-    jvm_route $cookie_JSESSIONID|sessionid;
-}
-2.For tomcat
-upstream backend {
-    server 192.168.0.100 srun_id=a;
-    server 192.168.0.101 srun_id=b;
-    server 192.168.0.102 srun_id=c;
-    server 192.168.0.103 srun_id=d;
-
-    jvm_route $cookie_JSESSIONID|sessionid reverse;
-}
-
 DIRECTIVES
 
     jvm_route
@@ -48,7 +27,86 @@ DIRECTIVES
     server
 
     Every syntax is the same with the official directive except the parameter of 'srun_id' which identified the backend JVM's name by cookie. The default srun_id's value is 'a';
- 
+
+EXAMPLE
+
+1.For resin with nginx
+
+upstream backend {
+    server 192.168.0.100 srun_id=a;
+    server 192.168.0.101 srun_id=b;
+    server 192.168.0.102 srun_id=c;
+    server 192.168.0.103 srun_id=d;
+
+    jvm_route $cookie_JSESSIONID;
+}
+
+For all resin servers' configure:
+
+    <server id="a" address="192.168.0.100" port="8080">
+    <http id="" port="80"/>
+    </server>
+    <server id="b" address="192.168.0.101" port="8080">
+    <http id="" port="80"/>
+    </server>
+    <server id="c" address="192.168.0.102" port="8080">
+    <http id="" port="80"/>
+    </server>
+    <server id="d" address="192.168.0.103" port="8080">
+    <http id="" port="80"/>
+    </server>
+
+And start each resin instances like this:
+    server a
+    shell $> /usr/local/resin/bin/httpd.sh -server a start
+
+    server b
+    shell $> /usr/local/resin/bin/httpd.sh -server b start
+
+    server c
+    shell $> /usr/local/resin/bin/httpd.sh -server c start
+
+    server d
+    shell $> /usr/local/resin/bin/httpd.sh -server d start
+
+2.For tomcat with nginx
+upstream backend {
+    server 192.168.0.100 srun_id=a;
+    server 192.168.0.101 srun_id=b;
+    server 192.168.0.102 srun_id=c;
+    server 192.168.0.103 srun_id=d;
+
+    jvm_route $cookie_JSESSIONID reverse;
+}
+
+Each tomcats' configure:
+    Tomcat a:
+    <Engine name="Catalina" defaultHost="localhost" jvmRoute="a">
+
+    Tomcat b:
+    <Engine name="Catalina" defaultHost="localhost" jvmRoute="b">
+
+    Tomcat c:
+    <Engine name="Catalina" defaultHost="localhost" jvmRoute="c">
+
+    Tomcat d:
+    <Engine name="Catalina" defaultHost="localhost" jvmRoute="d">
+
+3. A simple java test page
+index.jsp
+
+<%@ page language="java" import="java.util.*" pageEncoding="UTF-8"%>
+
+<html>
+<head>
+</head>
+<body>
+$your_jvm_name
+<br />
+<%out.print(request.getSession()) ;%> <br />
+<%out.println(request.getHeader("Cookie"))&nbsp;%>
+</body>
+</html>
 
 Note: This is a third-party module. And you need careful test before using this module in your product environment.
 
