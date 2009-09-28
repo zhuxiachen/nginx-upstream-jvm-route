@@ -1,7 +1,6 @@
 #labels nginx,resin,session,sticky
 
-
-= Nginx =
+= Nginx's configure =
 {{{
 upstream backend {
     server 192.168.0.100 srun_id=a;
@@ -10,7 +9,8 @@ upstream backend {
     jvm_route $cookie_JSESSIONID;
 }
 }}}
-= Resin =
+= Resin's configure =
+For all resin servers
 {{{
     <server id="a" address="192.168.0.100" port="8080">
     <!-- server2 address=192.168.0.100 -->
@@ -20,4 +20,14 @@ upstream backend {
     <!-- server2 address=192.168.6.162 -->
     <http id="" port="80"/>
     </server>
+}}}
+
+And start each resin instances like this:
+server a
+{{{
+shell $> /usr/local/resin/bin/httpd.sh -server a start
+}}}
+server b
+{{{
+shell $> /usr/local/resin/bin/httpd.sh -server b start
 }}}
