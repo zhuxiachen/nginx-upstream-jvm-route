@@ -1,0 +1,23 @@
+#labels nginx,resin,session,sticky
+
+
+= Nginx =
+{{{
+upstream backend {
+    server 192.168.0.100 srun_id=a;
+    server 192.168.0.101 srun_id=b;
+   
+    jvm_route $cookie_JSESSIONID;
+}
+}}}
+= Resin =
+{{{
+    <server id="a" address="192.168.0.100" port="8080">
+    <!-- server2 address=192.168.0.100 -->
+    <http id="" port="80"/>
+    </server>
+    <server id="b" address="192.168.0.101" port="8080">
+    <!-- server2 address=192.168.6.162 -->
+    <http id="" port="80"/>
+    </server>
+}}}
