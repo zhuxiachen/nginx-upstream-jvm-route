@@ -215,24 +215,18 @@ static ngx_int_t
 ngx_http_upstream_jvm_route_get_session_value(ngx_http_request_t *r,
     ngx_http_upstream_srv_conf_t *us, ngx_str_t *val)
 {
-    ngx_str_t *name;
+    ngx_str_t *name, *uri;
     ngx_int_t i; 
     size_t offset;
     u_char *start;
 
+    /* session in cookie */
     if (ngx_http_script_run(r, val, us->lengths, 0, us->values) == NULL) {
         return NGX_ERROR;
     }
 
-    /* session in cookie */
-    if (val->len > 0) {
-        i = ngx_strntok(val->data, ";,", val->len, sizeof(";,")-1);
-        if (i > 0) {
-            val->len = i;
-        }
-    }
-    else {
-        /* session in url */
+    /* session in url */
+    if (val->len == 0) {
 
         if (us->session_url.len != 0) {
             name = &us->session_url;
@@ -241,27 +235,32 @@ ngx_http_upstream_jvm_route_get_session_value(ngx_http_request_t *r,
             name = &us->session_cookie;
         }
 
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "jvm_route# URI: \"%V\", session_name: \"%V\"", &r->uri, name);
+        uri = &r->unparsed_uri;
 
-        start = ngx_strncasestrn(r->uri.data, name->data, r->uri.len, name->len);
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "jvm_route# URI: \"%V\", session_name: \"%V\"", uri, name);
+
+        start = ngx_strncasestrn(uri->data, name->data, uri->len, name->len);
         if (start != NULL) {
             start = start + name->len;
             while (*start != '=') {
+                if (start >= (uri->data + uri->len)) {
+                    return NGX_ERROR;
+                }
                 start++;
             }
 
             start++;
-            offset = start - r->uri.data;
-            if (offset < r->uri.len) {
+            offset = start - uri->data;
+            if (offset < uri->len) {
                 val->data = start;
 
-                i = ngx_strntok(start, "?&;", r->uri.len - offset, sizeof("?&;")-1);
+                i = ngx_strntok(start, "?&;", uri->len - offset, sizeof("?&;")-1);
                 if (i > 0) {
                     val->len = i;
                 }
                 else {
-                    val->len = r->uri.len - offset;
+                    val->len = uri->len - offset;
                 }
             }
         }
@@ -277,7 +276,7 @@ ngx_http_upstream_init_jvm_route_peer(ngx_http_request_t *r,
     ngx_str_t                                 val;
     ngx_http_upstream_jvm_route_peer_data_t  *jrp;
 
-    if (ngx_http_upstream_jvm_route_get_session_value(r, us, &val)) {
+    if (ngx_http_upstream_jvm_route_get_session_value(r, us, &val) != NGX_OK) {
         return NGX_ERROR;
     } 
 
