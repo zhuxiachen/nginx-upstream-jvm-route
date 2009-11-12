@@ -1,4 +1,3 @@
-Binary files src/core/.ngx_string.h.swp and src-change/core/.ngx_string.h.swp differ
 diff -ruN src/http/ngx_http_upstream.c src-change/http/ngx_http_upstream.c
 --- src/http/ngx_http_upstream.c	2009-07-01 14:24:20.000000000 +0800
 +++ src-change/http/ngx_http_upstream.c	2009-07-06 15:11:27.000000000 +0800
@@ -75,20 +74,4 @@ diff -ruN src/http/ngx_http_upstream.h src-change/http/ngx_http_upstream.h
  #define NGX_HTTP_UPSTREAM_DOWN          0x0010
  #define NGX_HTTP_UPSTREAM_BACKUP        0x0020
 +#define NGX_HTTP_UPSTREAM_SRUN_ID       0x0040
- 
- 
- struct ngx_http_upstream_srv_conf_s {
-@@ -111,6 +113,13 @@
-     ngx_uint_t                       line;
-     in_port_t                        port;
-     in_port_t                        default_port;
-+    
-+    /* add for jvm_route */
-+    ngx_array_t                     *values;
-+    ngx_array_t                     *lengths;
-+    ngx_str_t                        session_cookie;
-+    ngx_str_t                        session_url;
-+    unsigned                         reverse:1; 
- };
- 
  

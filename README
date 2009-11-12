@@ -1,9 +1,9 @@
-nginx_upstream_jvm_route
+=nginx_upstream_jvm_route=
 -------
 
 This module achieves session stickiness with the session cookie. If the session is not in the cookie or URL, the module will be a normal Round-Robin upstream module.
 
-INSTALLATION
+=INSTALLATION=
     
     cd nginx-0.7.59 # or whatever
     patch -p0 < /path/to/this/directory/jvm_route.patch
@@ -12,9 +12,9 @@ compile nginx with the following addition option:
 
   --add-module=/path/to/this/directory
 
-DIRECTIVES
+=DIRECTIVES=
 
-    jvm_route
+    ==jvm_route==
 
     syntax: jvm_route $cookie_SESSION_COOKIE[|session_url] [reverse]
     default: none
@@ -24,11 +24,24 @@ DIRECTIVES
     With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
     If the request fails to be sent to the chosen backend server, It will try another server with the Round-Robin mode until all the upstream servers tried. The directive proxy_next_upstream can specify in what cases the request will be transmitted to the next server. If you want to force the session sticky, you can set 'proxy_next_upstream off'.
 
-    server
+
+    ==jvm_route_status==
+
+    syntax: jvm_route_status upstream_name
+    default: none
+    context: location
+    description: 
+    return the status of the jvm_route peers.
+    example:
+    location status {
+        jvm_route_status backend;
+    }
+
+    ==server==
 
     Every syntax is the same with the official directive except the parameter of 'srun_id' which identified the backend JVM's name by cookie. The default srun_id's value is 'a';
-
-EXAMPLE
+ 
+=EXAMPLE=
 
 1.For resin with nginx
 
@@ -82,13 +95,10 @@ upstream backend {
 Each tomcats' configure:
     Tomcat a:
     <Engine name="Catalina" defaultHost="localhost" jvmRoute="a">
-
     Tomcat b:
     <Engine name="Catalina" defaultHost="localhost" jvmRoute="b">
-
     Tomcat c:
     <Engine name="Catalina" defaultHost="localhost" jvmRoute="c">
-
     Tomcat d:
     <Engine name="Catalina" defaultHost="localhost" jvmRoute="d">
 
