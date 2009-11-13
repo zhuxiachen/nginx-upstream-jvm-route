@@ -1,7 +1,8 @@
 =nginx_upstream_jvm_route=
 -------
 
-This module achieves session stickiness with the session cookie. If the session is not in the cookie or URL, the module will be a normal Round-Robin upstream module.
+This module achieves session stickiness with the session cookie. If the session is not in the cookie
+or URL, the module will be a normal Round-Robin upstream module.
 
 =INSTALLATION=
     
@@ -20,9 +21,20 @@ compile nginx with the following addition option:
     default: none
     context: upstream
     description: 
-    '$cookie_SESSION_COOKIE' specifies the session cookie name(0.7.24+). 'session_url' specifies a different session name in the URL when the client does not accept a cookie. The session name is case-insensitive. In this module, if it does not find the session_url, it will use the session cookie name instead. So if the session name in cookie is the name with its in URL, you don't need give the session_url name.  
-    With scanning this cookie, the module will send the request to right backend server. As far as I know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value 'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from tail to head. 
-    If the request fails to be sent to the chosen backend server, It will try another server with the Round-Robin mode until all the upstream servers tried. The directive proxy_next_upstream can specify in what cases the request will be transmitted to the next server. If you want to force the session sticky, you can set 'proxy_next_upstream off'.
+    '$cookie_SESSION_COOKIE' specifies the session cookie name(0.7.24+). 'session_url' specifies a
+    different session name in the URL when the client does not accept a cookie. The session name is
+    case-insensitive. In this module, if it does not find the session_url, it will use the session
+    cookie name instead. So if the session name in cookie is the name with its in URL, you don't
+    need give the session_url name.  
+    With scanning this cookie, the module will send the request to right backend server. As far as I
+    know, the resin's srun_id name is in the head of cookie. For example, requests with cookie value
+    'a***' are always sent to the server with the srun_id of 'a'. But tomcat's JSESSIONID is
+    opposite, which is like '***.a'. The parameter of 'reverse' specifies the cookie scanned from
+    tail to head.
+    If the request fails to be sent to the chosen backend server, It will try another server with
+    the Round-Robin mode until all the upstream servers tried. The directive proxy_next_upstream can
+    specify in what cases the request will be transmitted to the next server. If you want to force
+    the session sticky, you can set 'proxy_next_upstream off'.
 
 
     ==jvm_route_status==
@@ -31,7 +43,29 @@ compile nginx with the following addition option:
     default: none
     context: location
     description: 
-    return the status of the jvm_route peers.
+    return the status of the jvm_route peers, like this: 
+
+    upstream blog: total_nreq = 0, total_requests = 5 current peer 4/18
+
+    peer 0: 172.19.0.120:80(a) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 1, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 1: 172.19.0.121:80(b) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 2, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 2: 172.19.0.122:80(c) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 3, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 3: 172.19.0.123:80(d) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 4, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 4: 172.19.0.125:80(f) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 5, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 5: 172.19.0.126:80(g) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 6: 172.19.0.127:80(h) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 7: 172.19.0.128:80(g) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 8: 172.19.0.129:80(j) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 9: 172.19.0.130:80(k) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 10: 172.19.0.131:80(l) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 11: 172.19.0.132:80(m) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 12: 172.19.0.235:80(n) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 13: 172.19.0.236:80(o) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 14: 172.19.0.237:80(p) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 15: 172.19.0.238:80(q) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 16: 172.19.0.239:80(r) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+    peer 17: 172.19.0.124:80(e) weight: 0/0, fails: 0/1, down: 1, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+
     example:
     location status {
         jvm_route_status backend;
@@ -39,7 +73,9 @@ compile nginx with the following addition option:
 
     ==server==
 
-    Every syntax is the same with the official directive except the parameter of 'srun_id' which identified the backend JVM's name by cookie. The default srun_id's value is 'a';
+    Every syntax is the same with the official directive except the parameter of 'srun_id' which
+    identified the backend JVM's name by cookie. The default srun_id's value is 'a'. This module
+    have not support 'backup' parameter yet.
  
 =EXAMPLE=
 
@@ -118,6 +154,7 @@ $your_jvm_name
 </body>
 </html>
 
-Note: This is a third-party module. And you need careful test before using this module in your product environment.
+Note: This is a third-party module. And you need careful test before using this module in your
+product environmenta.
 
 Questions/patches may be directed to Weibin Yao, yaoweibin@gmail.com.
