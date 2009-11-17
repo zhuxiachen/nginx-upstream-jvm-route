@@ -5,7 +5,7 @@
  * Email: yaoweibin@gmail.com
  * Version: $Id$
  *
- * Based on the upstream_round_robin and upstream fair momdule.
+ * Based on the upstream_round_robin and upstream_fair momdule.
  *
  * This module can be distributed under the same terms as Nginx itself.
  */
@@ -39,16 +39,16 @@ typedef struct {
     ngx_uint_t                          total_req;
     ngx_uint_t                          last_req_id;
     ngx_uint_t                          fails;
+    ngx_uint_t                          total_fails;
     ngx_int_t                           current_weight;
 } ngx_http_upstream_jvm_route_shared_t;
 
 
 typedef struct {
-    /*ngx_uint_t                          generation;*/
     ngx_http_upstream_jvm_route_peers_t *peers; 
-    ngx_uint_t                          total_nreq;
-    ngx_uint_t                          total_requests;
-    ngx_atomic_t                        lock;
+    ngx_uint_t                           total_nreq;
+    ngx_uint_t                           total_requests;
+    ngx_atomic_t                         lock;
     ngx_http_upstream_jvm_route_shared_t stats[1];
 } ngx_http_upstream_jvm_route_shm_block_t;
 
@@ -60,10 +60,11 @@ typedef struct {
     struct sockaddr                *sockaddr;
     socklen_t                       socklen;
     ngx_str_t                       name;
+
     ngx_int_t                       weight;
-    ngx_uint_t                      fails;
     time_t                          accessed;
     ngx_uint_t                      max_fails;
+    ngx_uint_t                      max_busy;
     time_t                          fail_timeout;
     ngx_uint_t                      down;          /* unsigned  down:1; */
     ngx_str_t                       srun_id;
@@ -90,16 +91,16 @@ struct ngx_http_upstream_jvm_route_peers_s {
 #define NGX_PEER_INVALID (~0UL)
 
 typedef struct {
-    ngx_http_upstream_jvm_route_srv_conf_t  *conf;
-    ngx_http_upstream_jvm_route_peers_t  *peers;
+    ngx_http_upstream_jvm_route_srv_conf_t *conf;
+    ngx_http_upstream_jvm_route_peers_t    *peers;
 
-    ngx_uint_t                      current;
-    uintptr_t                      *tried;
-    uintptr_t                       data;
+    ngx_uint_t                              current;
+    uintptr_t                              *tried;
+    uintptr_t                               data;
 
-    ngx_str_t                          cookie;
+    ngx_str_t                               cookie;
 
-    ngx_uint_t                         index;
+    ngx_uint_t                              index;
 } ngx_http_upstream_jvm_route_peer_data_t;
 
 static void * ngx_http_upstream_jvm_route_create_conf(ngx_conf_t *cf);
@@ -361,9 +362,11 @@ ngx_http_upstream_init_jvm_route_rr(ngx_conf_t *cf,
                 peers->peer[n].name = server[i].addrs[j].name;
                 peers->peer[n].srun_id = server[i].srun_id;
                 peers->peer[n].max_fails = server[i].max_fails;
+                peers->peer[n].max_busy = server[i].max_busy;
                 peers->peer[n].fail_timeout = server[i].fail_timeout;
                 peers->peer[n].down = server[i].down;
                 peers->peer[n].weight = server[i].down ? 0 : server[i].weight;
+
                 n++;
             }
         }
@@ -413,8 +416,10 @@ ngx_http_upstream_init_jvm_route_rr(ngx_conf_t *cf,
                 backup->peer[n].weight = server[i].weight;
                 backup->peer[n].srun_id = server[i].srun_id;
                 backup->peer[n].max_fails = server[i].max_fails;
+                backup->peer[n].max_busy = server[i].max_busy;
                 backup->peer[n].fail_timeout = server[i].fail_timeout;
                 backup->peer[n].down = server[i].down;
+
                 n++;
             }
         }
@@ -469,6 +474,7 @@ ngx_http_upstream_init_jvm_route_rr(ngx_conf_t *cf,
         peers->peer[i].name = u.addrs[i].name;
         peers->peer[i].weight = 1;
         peers->peer[i].max_fails = 1;
+        peers->peer[i].max_busy = 0;
         peers->peer[i].fail_timeout = 10;
     }
 
@@ -497,9 +503,9 @@ ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *u
     peers->current = peers->number - 1;
 
     shm_size = sizeof(ngx_http_upstream_jvm_route_shm_block_t) +
-            (peers->number - 1) * sizeof(ngx_http_upstream_jvm_route_peers_t);
+            (peers->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t);
     
-    shm_size = ngx_align(shm_size, ngx_pagesize) + ngx_pagesize;
+    shm_size = ngx_align(shm_size, ngx_pagesize) + 2 * ngx_pagesize;
 
     ujrscf->shm_zone = ngx_shared_memory_add(
         cf, peers->name, shm_size, &ngx_http_upstream_jvm_route_module);
@@ -537,7 +543,7 @@ ngx_http_upstream_jvm_route_shm_alloc( ngx_http_upstream_jvm_route_srv_conf_t *u
     shpool = (ngx_slab_pool_t *) ujrscf->shm_zone->shm.addr;
 
     shm_block = ngx_slab_alloc(shpool, sizeof(*shm_block) +
-            (ujrp->number - 1) * sizeof(ngx_http_upstream_jvm_route_peers_t));
+            (ujrp->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t));
     if (shm_block == NULL) {
         ngx_log_error(NGX_LOG_EMERG, log, 0,
                 "upstream_jvm_route_shm_size is too small!");
@@ -702,6 +708,10 @@ ngx_http_upstream_jvm_route_try_peer( ngx_http_upstream_jvm_route_peer_data_t *j
 
     peer = &jrp->peers->peer[peer_id];
 
+    if (peer->max_busy != 0 && peer->shared->nreq >= peer->max_busy) {
+        return NGX_BUSY;
+    }
+
     if (!peer->down) {
         if (peer->max_fails == 0 || peer->shared->fails < peer->max_fails) {
             return NGX_OK;
@@ -751,7 +761,7 @@ ngx_http_upstream_choose_by_jvm_route(ngx_http_upstream_jvm_route_peer_data_t *j
 static ngx_int_t
 ngx_http_upstream_choose_by_rr(ngx_http_upstream_jvm_route_peer_data_t *jrp)
 {
-    ngx_uint_t                          i, n;
+    ngx_uint_t                          i, n, all_busy = 0;
     ngx_uint_t                          npeers = jrp->peers->number;
     ngx_http_upstream_jvm_route_peer_t *peer;
 
@@ -768,8 +778,13 @@ ngx_http_upstream_choose_by_rr(ngx_http_upstream_jvm_route_peer_data_t *jrp)
             }
         }
 
+        if (all_busy) {
+            return NGX_PEER_INVALID;
+        }
+
         for (i = 0; i < npeers; i++) {
             peer[i].shared->current_weight = peer[i].weight;
+            all_busy = 1;
         }
     }
 
@@ -793,7 +808,7 @@ ngx_http_upstream_jvm_route_choose_peer(ngx_peer_connection_t *pc,
         n = ngx_http_upstream_choose_by_jvm_route(jrp);
         if (n != NGX_PEER_INVALID) {
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 
-                    0, "[upstream_jvm_route] chose peer %i by jvm_route", n);
+                    0, "[upstream_jvm_route] choose peer %i by jvm_route", n);
             goto chosen;
         }
     }
@@ -801,7 +816,7 @@ ngx_http_upstream_jvm_route_choose_peer(ngx_peer_connection_t *pc,
     n = ngx_http_upstream_choose_by_rr(jrp);
     if (n != NGX_PEER_INVALID) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 
-                0, "[upstream_jvm_route] chose peer %i by rr", n);
+                0, "[upstream_jvm_route] choose peer %i by rr", n);
         goto chosen;
     }
 
@@ -863,6 +878,9 @@ ngx_http_upstream_get_jvm_route_peer(ngx_peer_connection_t *pc, void *data)
     pc->tries--;
 
     if (ret == NGX_BUSY) {
+        ngx_log_error(NGX_LOG_ERR, pc->log, 0,
+                "[upstream_jvm_route] ALL the peers are busy now! "
+                "Flush all the peers' failure countor to zero.");
 
         for (n = 0; n < jrp->peers->number; n++) {
             jrp->peers->peer[n].shared->fails = 0;
@@ -919,6 +937,7 @@ ngx_http_upstream_free_jvm_route_peer(ngx_peer_connection_t *pc, void *data,
 
     if (state & NGX_PEER_FAILED) {
         peer->shared->fails++;
+        peer->shared->total_fails++;
         peer->accessed = ngx_time();
 
         if (peer->max_fails) {
@@ -1211,19 +1230,29 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
 
     if (peers) {
         b->last = ngx_sprintf(b->last, 
-                "upstream %V: total_nreq = %ui, total_requests = %ui current peer %d/%d\n\n", 
-                peers->name, shm_block->total_nreq, shm_block->total_requests, peers->current, peers->number);
+                "upstream %V: total_busy = %ui, "
+                "total_requests = %ui, " 
+                "current peer %d/%d\n\n", 
+                peers->name, shm_block->total_nreq,
+                shm_block->total_requests,
+                peers->current, peers->number);
         for (i = 0; i < peers->number; i++) {
             ngx_http_upstream_jvm_route_peer_t *peer = &peers->peer[i];
             ngx_http_upstream_jvm_route_shared_t *sh = peer->shared;
             b->last = ngx_sprintf(b->last, 
-                    " peer %d: %V(%V) weight: %d/%d, fails: %d/%d, down: %d, nreq: %d, total_req: %ui, last_req: %ui, fail_acc_time: %s",
-                i, &peer->name, &peer->srun_id, sh->current_weight, peer->weight, sh->fails, peer->max_fails, peer->down, sh->nreq, sh->total_req, sh->last_req_id, ctime(&peer->accessed));
+                    " peer %d: %V(%V) " 
+                    "down: %d, fails: %d/%d, busy: %d/%d, " 
+                    "weight: %d/%d, " 
+                    "total_req: %ui, last_req: %ui, total_fails: %ui, fail_acc_time: %s",
+                i, &peer->name, &peer->srun_id, 
+                peer->down, sh->fails, peer->max_fails, sh->nreq, peer->max_busy,
+                sh->current_weight, peer->weight, 
+                sh->total_req, sh->last_req_id, sh->total_fails, ctime(&peer->accessed));
         }
     }
     else {
         b->last = ngx_sprintf(b->last, 
-                "upstream : total_nreq = %ui, total_requests: %ui\n", 
+                "upstream : total_busy = %ui, total_requests: %ui\n", 
                 shm_block->total_nreq, shm_block->total_requests);
     }
 
