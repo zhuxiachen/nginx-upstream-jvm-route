@@ -45,7 +45,7 @@ compile nginx with the following addition option:
     description: 
     return the status of the jvm_route peers, like this: 
 
-    upstream blog: total_nreq = 0, total_requests = 5 current peer 4/18
+    upstream backend: total_nreq = 0, total_requests = 5 current peer 4/18
 
     peer 0: 172.19.0.120:80(a) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 1, fail_acc_time: Thu Jan  1 08:00:00 1970
     peer 1: 172.19.0.121:80(b) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 2, fail_acc_time: Thu Jan  1 08:00:00 1970
@@ -73,9 +73,15 @@ compile nginx with the following addition option:
 
     ==server==
 
-    Every syntax is the same with the official directive except the parameter of 'srun_id' which
-    identified the backend JVM's name by cookie. The default srun_id's value is 'a'. This module
-    have not support 'backup' parameter yet.
+    Main syntax is the same as the official directive. 
+    This module add these parameters:
+    'srun_id': identifies the backend JVM's name by cookie. The default srun_id's value is 'a'. 
+    'max_busy': the maximum of active connections with the backend server. The default value is 0
+    which means unlimited. If the server's active connections is higher than this parameter, it will
+    not be chosen until the server is less busier. If all the servers are busy, Nginx will return
+    502.
+     
+    NOTE: This module does not support the parameter of 'backup' yet.
  
 =EXAMPLE=
 
