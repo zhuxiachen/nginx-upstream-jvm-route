@@ -1232,7 +1232,7 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
                 "current_peer %d/%d\n\n", 
                 peers->name, shm_block->total_nreq,
                 shm_block->total_requests,
-                peers->current, peers->number);
+                peers->current + 1, peers->number);
         for (i = 0; i < peers->number; i++) {
             ngx_http_upstream_jvm_route_peer_t *peer = &peers->peer[i];
             ngx_http_upstream_jvm_route_shared_t *sh = peer->shared;
@@ -1241,7 +1241,7 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
                     "down: %d, fails: %d/%d, busy: %d/%d, " 
                     "weight: %d/%d, " 
                     "total_req: %ui, last_req: %ui, total_fails: %ui, fail_acc_time: %s",
-                i, &peer->name, &peer->srun_id, 
+                i + 1, &peer->name, &peer->srun_id, 
                 peer->down, sh->fails, peer->max_fails, sh->nreq, peer->max_busy,
                 sh->current_weight, peer->weight, 
                 sh->total_req, sh->last_req_id, sh->total_fails, ctime(&peer->accessed));
