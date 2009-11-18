@@ -122,8 +122,8 @@ ngx_http_upstream_free_jvm_route_peer(ngx_peer_connection_t *pc, void *data,
 #if (NGX_HTTP_SSL)
 static ngx_int_t
 ngx_http_upstream_jvm_route_set_session(ngx_peer_connection_t *pc, void *data);
-static ngx_int_t
-ngx_http_upstream_jvm_route_set_session(ngx_peer_connection_t *pc, void *data);
+static void
+ngx_http_upstream_jvm_route_save_session(ngx_peer_connection_t *pc, void *data);
 #endif
 
 static ngx_command_t  ngx_http_upstream_jvm_route_commands[] = {
@@ -688,9 +688,9 @@ ngx_http_upstream_init_jvm_route_peer(ngx_http_request_t *r,
 
 #if (NGX_HTTP_SSL)
     r->upstream->peer.set_session =
-                               ngx_http_upstream_set_jvm_route_peer_session;
+                               ngx_http_upstream_jvm_route_set_session;
     r->upstream->peer.save_session =
-                               ngx_http_upstream_save_jvm_route_peer_session;
+                               ngx_http_upstream_jvm_route_save_session;
 #endif
 
     return NGX_OK;
