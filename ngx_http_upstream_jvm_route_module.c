@@ -1232,7 +1232,7 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
         b->last = ngx_sprintf(b->last, 
                 "upstream %V: total_busy = %ui, "
                 "total_requests = %ui, " 
-                "current peer %d/%d\n\n", 
+                "current_peer %d/%d\n\n", 
                 peers->name, shm_block->total_nreq,
                 shm_block->total_requests,
                 peers->current, peers->number);

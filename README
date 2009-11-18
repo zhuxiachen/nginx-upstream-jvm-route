@@ -42,40 +42,53 @@ compile nginx with the following addition option:
     syntax: jvm_route_status upstream_name
     default: none
     context: location
+    example:
+        location status {
+            jvm_route_status backend;
+        }
     description: 
     return the status of the jvm_route peers, like this: 
 
-    upstream backend: total_nreq = 0, total_requests = 5 current peer 4/18
+        upstream backend: total_busy = 10, total_requests = 311, current_peer 15/18
 
-    peer 0: 172.19.0.120:80(a) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 1, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 1: 172.19.0.121:80(b) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 2, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 2: 172.19.0.122:80(c) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 3, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 3: 172.19.0.123:80(d) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 4, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 4: 172.19.0.125:80(f) weight: 0/1, fails: 0/1, down: 0, nreq: 0, total_req: 1, last_req: 5, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 5: 172.19.0.126:80(g) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 6: 172.19.0.127:80(h) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 7: 172.19.0.128:80(g) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 8: 172.19.0.129:80(j) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 9: 172.19.0.130:80(k) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 10: 172.19.0.131:80(l) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 11: 172.19.0.132:80(m) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 12: 172.19.0.235:80(n) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 13: 172.19.0.236:80(o) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 14: 172.19.0.237:80(p) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 15: 172.19.0.238:80(q) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 16: 172.19.0.239:80(r) weight: 1/1, fails: 0/1, down: 0, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
-    peer 17: 172.19.0.124:80(e) weight: 0/0, fails: 0/1, down: 1, nreq: 0, total_req: 0, last_req: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 0: 172.19.0.126:80(g) down: 0, fails: 0/1, busy: 0/0, weight: 4/4, total_req: 60, last_req: 298, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 1: 172.19.0.120:80(a) down: 0, fails: 0/1, busy: 1/1, weight: 1/1, total_req: 15, last_req: 295, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 2: 172.19.0.121:80(b) down: 0, fails: 0/1, busy: 0/1, weight: 0/1, total_req: 16, last_req: 299, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 3: 172.19.0.122:80(c) down: 0, fails: 0/1, busy: 0/1, weight: 0/1, total_req: 16, last_req: 300, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 4: 172.19.0.123:80(d) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 301, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 5: 172.19.0.124:80(e) down: 0, fails: 1/1, busy: 0/1, weight: 1/1, total_req: 2, last_req: 216, total_fails: 2, fail_acc_time: Wed Nov 18 11:19:37 2009
+        peer 6: 172.19.0.125:80(f) down: 0, fails: 0/1, busy: 0/0, weight: 0/1, total_req: 16, last_req: 302, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 7: 172.19.0.127:80(h) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 303, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 8: 172.19.0.128:80(i) down: 0, fails: 0/1, busy: 0/1, weight: 0/1, total_req: 16, last_req: 304, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 9: 172.19.0.129:80(j) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 305, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 10: 172.19.0.130:80(k) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 306, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 11: 172.19.0.131:80(l) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 307, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 12: 172.19.0.132:80(m) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 308, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 13: 172.19.0.235:80(n) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 309, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 14: 172.19.0.236:80(o) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 14, last_req: 310, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 15: 172.19.0.237:80(p) down: 0, fails: 0/1, busy: 1/1, weight: 0/1, total_req: 16, last_req: 311, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 16: 172.19.0.238:80(q) down: 0, fails: 0/1, busy: 0/1, weight: 1/1, total_req: 15, last_req: 292, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
+        peer 17: 172.19.0.239:80(r) down: 0, fails: 0/1, busy: 0/1, weight: 1/1, total_req: 15, last_req: 293, total_fails: 0, fail_acc_time: Thu Jan  1 08:00:00 1970
 
-    example:
-    location status {
-        jvm_route_status backend;
-    }
+    total_busy is the sum of all the backend servers' active connections.
+    total_requests is all the count of requests which had proxied to backend.
+    current_peer is meaningful with the Round Robin mode when the session cookie is absent.
+
+    down is the state of backend server whether is configured with 'down'.
+    fails is the failure requests count in the interval of 'fail_timeout'.
+    busy is the current active connections of the backend server.
+    weight is the current weight of server and just meaningful with the Round Robin module.
+    total_req is the count of requests which had proxied to this backend server.
+    last_req is the last request's id proxied by this server.
+    total_fails is the count of failure requests which had proxied to the this backend server.
+    fail_acc_time stands for the last failure access time.
 
     ==server==
 
     Main syntax is the same as the official directive. 
     This module add these parameters:
-    'srun_id': identifies the backend JVM's name by cookie. The default srun_id's value is 'a'. 
+    'srun_id': identifies the backend JVM's name by cookie. The default srun_id's value is 'a'. The
+    name can be more than one letter.
     'max_busy': the maximum of active connections with the backend server. The default value is 0
     which means unlimited. If the server's active connections is higher than this parameter, it will
     not be chosen until the server is less busier. If all the servers are busy, Nginx will return
