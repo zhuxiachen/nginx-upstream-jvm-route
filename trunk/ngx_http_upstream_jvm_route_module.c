@@ -285,27 +285,6 @@ ngx_strncasestrn(u_char *s1, u_char *s2, size_t len1, size_t len2)
     return --s1;
 }
 
-static ngx_int_t 
-ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
-{
-    ngx_slab_pool_t *shpool;
-
-    if (data) {
-        shm_zone->data = data;
-        return NGX_OK;
-    }
-
-    shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
-
-    if (shm_zone->shm.exists) {
-        shm_zone->data = shpool->data;
-
-        return NGX_OK;
-    }
-
-    return NGX_OK;
-}
-
 static ngx_int_t
 ngx_http_upstream_cmp_servers(const void *one, const void *two)
 {
@@ -485,10 +464,66 @@ ngx_http_upstream_init_jvm_route_rr(ngx_conf_t *cf,
     return NGX_OK;
 }
 
+static ngx_int_t 
+ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
+{
+    ngx_uint_t                              i;
+    ngx_slab_pool_t                        *shpool;
+    ngx_http_upstream_jvm_route_peers_t    *peers;
+    ngx_http_upstream_jvm_route_shm_block_t *shm_block;
+
+    if (data) {
+        return NGX_OK;
+    }
+
+    peers = shm_zone->data;
+    if (peers) {
+        shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
+
+        if (shm_zone->shm.exists) {
+            shm_zone->data = shpool->data;
+            return NGX_OK;
+        }
+
+        shm_block = ngx_slab_alloc(shpool, sizeof(*shm_block) +
+                (peers->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t));
+
+        if (shm_block == NULL) {
+            ngx_log_error(NGX_LOG_EMERG, shm_zone->shm.log, 0,
+                    "upstream_jvm_route_shm_size is too small!");
+            return NGX_ERROR;
+        }
+
+        shm_zone->data = shm_block;
+        peers->shared = shm_block;
+
+        shm_block->peers = peers;
+        shm_block->total_nreq = 0;
+        shm_block->total_requests = 0;
+
+        for (i = 0; i < peers->number; i++) {
+            shm_block->stats[i].nreq = 0;
+            shm_block->stats[i].last_req_id = 0;
+            shm_block->stats[i].total_req = 0;
+            shm_block->stats[i].fails = 0;
+            shm_block->stats[i].current_weight = peers->peer[i].weight;
+
+            peers->peer[i].shared = &peers->shared->stats[i];
+        }
+
+        return NGX_OK;
+    }
+
+    ngx_log_error(NGX_LOG_EMERG, shm_zone->shm.log, 0,
+            "[upstream_jvm_route] can't find the peers!");
+    return NGX_ERROR;
+}
+
 static ngx_int_t
 ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us)
 {
     ngx_uint_t                              shm_size;
+    ngx_shm_zone_t                         *shm_zone;
     ngx_http_upstream_jvm_route_peers_t    *peers;
     ngx_http_upstream_jvm_route_srv_conf_t *ujrscf;
 
@@ -500,6 +535,10 @@ ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *u
     }
 
     peers = us->peer.data;
+    if (peers == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                "[upstream_jvm_route] can't find the peers!");
+    }
     peers->current = peers->number - 1;
 
     shm_size = sizeof(ngx_http_upstream_jvm_route_shm_block_t) +
@@ -507,65 +546,16 @@ ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *u
     
     shm_size = ngx_align(shm_size, ngx_pagesize) + 2 * ngx_pagesize;
 
-    ujrscf->shm_zone = ngx_shared_memory_add(
-        cf, peers->name, shm_size, &ngx_http_upstream_jvm_route_module);
-    if (ujrscf->shm_zone == NULL) {
+    shm_zone = ngx_shared_memory_add(cf, peers->name, shm_size, 
+            &ngx_http_upstream_jvm_route_module);
+    if (shm_zone == NULL) {
         return NGX_ERROR;
     }
 
-    if (ujrscf->shm_zone->data) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                "jvm_route_shm_zone \"%V\" is already used",
-                peers->name);
-
-        return NGX_ERROR;
-    }
-
-    ujrscf->shm_zone->init = ngx_http_upstream_jvm_route_init_shm_zone;
+    shm_zone->data = peers;
+    shm_zone->init = ngx_http_upstream_jvm_route_init_shm_zone;
 
     us->peer.init = ngx_http_upstream_init_jvm_route_peer;
-
-    return NGX_OK;
-}
-
-static ngx_int_t
-ngx_http_upstream_jvm_route_shm_alloc( ngx_http_upstream_jvm_route_srv_conf_t *ujrscf, 
-        ngx_http_upstream_jvm_route_peers_t *ujrp, ngx_log_t *log)
-{
-    ngx_uint_t                               i;
-    ngx_slab_pool_t                         *shpool;
-    ngx_http_upstream_jvm_route_shm_block_t *shm_block;
-
-    if (ujrscf->shm_zone->data) {
-        return NGX_OK;
-    }
-
-    shpool = (ngx_slab_pool_t *) ujrscf->shm_zone->shm.addr;
-
-    shm_block = ngx_slab_alloc(shpool, sizeof(*shm_block) +
-            (ujrp->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t));
-    if (shm_block == NULL) {
-        ngx_log_error(NGX_LOG_EMERG, log, 0,
-                "upstream_jvm_route_shm_size is too small!");
-        return NGX_ERROR;
-    }
-
-    ujrscf->shm_zone->data = shm_block;
-    ujrp->shared = shm_block;
-
-    shm_block->peers = ujrp;
-    shm_block->total_nreq = 0;
-    shm_block->total_requests = 0;
-
-    for (i = 0; i < ujrp->number; i++) {
-            shm_block->stats[i].nreq = 0;
-            shm_block->stats[i].last_req_id = 0;
-            shm_block->stats[i].total_req = 0;
-            shm_block->stats[i].fails = 0;
-            shm_block->stats[i].current_weight = ujrp->peer[i].weight;
-
-            ujrp->peer[i].shared = &ujrp->shared->stats[i];
-    }
 
     return NGX_OK;
 }
@@ -661,12 +651,14 @@ ngx_http_upstream_init_jvm_route_peer(ngx_http_request_t *r,
 
     jrps = us->peer.data;
 
-    jrp->tried = ngx_bitvector_alloc(r->pool, jrps->number, &jrp->data);
+    if (jrps== NULL || jrps->shared == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                "[upstream_jvm_route] peers or shm_zone data is NULL!");
 
-    /* set up shared memory area */
-    if (ngx_http_upstream_jvm_route_shm_alloc(ujrscf, jrps, r->connection->log) != NGX_OK) {
         return NGX_ERROR;
     }
+
+    jrp->tried = ngx_bitvector_alloc(r->pool, jrps->number, &jrp->data);
 
     if (ngx_http_upstream_jvm_route_get_session_value(r, ujrscf, &val) != NGX_OK) {
         return NGX_ERROR;
@@ -1177,10 +1169,12 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
     ngx_uint_t         i;
     ngx_buf_t         *b;
     ngx_chain_t        out;
+    ngx_atomic_t      *lock;
     ngx_shm_zone_t    *shm_zone;
     ngx_http_upstream_jvm_route_shm_block_t *shm_block;
     ngx_http_upstream_jvm_route_peers_t     *peers;
     ngx_http_upstream_jvm_route_loc_conf_t  *ujrlcf;
+
 
     ujrlcf = ngx_http_get_module_loc_conf(r, ngx_http_upstream_jvm_route_module);
 
@@ -1228,6 +1222,9 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
     out.buf = b;
     out.next = NULL;
 
+    lock = &peers->shared->lock;
+    ngx_spinlock(lock, ngx_pid, 1024);
+
     if (peers) {
         b->last = ngx_sprintf(b->last, 
                 "upstream %V: total_busy = %ui, "
@@ -1255,6 +1252,8 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
                 "upstream : total_busy = %ui, total_requests: %ui\n", 
                 shm_block->total_nreq, shm_block->total_requests);
     }
+
+    ngx_spinlock_unlock(lock);
 
     r->headers_out.status = NGX_HTTP_OK;
     r->headers_out.content_length_n = b->last - b->pos;
