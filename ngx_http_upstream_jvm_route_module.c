@@ -20,8 +20,6 @@ typedef struct {
     ngx_array_t                     *values;
     ngx_array_t                     *lengths;
 
-    ngx_shm_zone_t                  *shm_zone;
-
     ngx_str_t                        session_cookie;
     ngx_str_t                        session_url;
 
@@ -472,26 +470,32 @@ ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
     ngx_http_upstream_jvm_route_peers_t    *peers;
     ngx_http_upstream_jvm_route_shm_block_t *shm_block;
 
-    if (data) {
-        return NGX_OK;
-    }
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, shm_zone->shm.log, 0,
+            "[upstream_jvm_route] data:%p, shm_zone->data:%p", data, shm_zone->data);
 
     peers = shm_zone->data;
     if (peers) {
-        shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
 
-        if (shm_zone->shm.exists) {
-            shm_zone->data = shpool->data;
-            return NGX_OK;
+        if (data == NULL) {
+            shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
+
+            if (shm_zone->shm.exists) {
+                shm_zone->data = shpool->data;
+                return NGX_OK;
+            }
+
+            shm_block = ngx_slab_alloc(shpool, sizeof(*shm_block) +
+                    (peers->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t));
+
+            if (shm_block == NULL) {
+                ngx_log_error(NGX_LOG_EMERG, shm_zone->shm.log, 0,
+                        "upstream_jvm_route_shm_size is too small!");
+                return NGX_ERROR;
+            }
         }
-
-        shm_block = ngx_slab_alloc(shpool, sizeof(*shm_block) +
-                (peers->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t));
-
-        if (shm_block == NULL) {
-            ngx_log_error(NGX_LOG_EMERG, shm_zone->shm.log, 0,
-                    "upstream_jvm_route_shm_size is too small!");
-            return NGX_ERROR;
+        else {
+            /* kill -HUP*/
+            shm_block = data;
         }
 
         shm_zone->data = shm_block;
@@ -551,6 +555,9 @@ ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *u
     if (shm_zone == NULL) {
         return NGX_ERROR;
     }
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, cf->log, 0,
+            "[upstream_jvm_route] upsteam:%V, shm_zone size:%ui", peers->name, shm_size);
 
     shm_zone->data = peers;
     shm_zone->init = ngx_http_upstream_jvm_route_init_shm_zone;
@@ -651,12 +658,15 @@ ngx_http_upstream_init_jvm_route_peer(ngx_http_request_t *r,
 
     jrps = us->peer.data;
 
-    if (jrps== NULL || jrps->shared == NULL) {
+    if (jrps == NULL || jrps->shared == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                 "[upstream_jvm_route] peers or shm_zone data is NULL!");
 
         return NGX_ERROR;
     }
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "[upstream_jvm_route] jrps:%p, shared:%p", jrps, jrps->shared);
 
     jrp->tried = ngx_bitvector_alloc(r->pool, jrps->number, &jrp->data);
 
