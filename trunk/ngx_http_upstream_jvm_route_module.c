@@ -466,6 +466,7 @@ static ngx_int_t
 ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
 {
     ngx_uint_t                              i;
+    ngx_atomic_t                           *lock;
     ngx_slab_pool_t                        *shpool;
     ngx_http_upstream_jvm_route_peers_t    *peers;
     ngx_http_upstream_jvm_route_shm_block_t *shm_block;
@@ -501,6 +502,9 @@ ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
         shm_zone->data = shm_block;
         peers->shared = shm_block;
 
+        lock = &peers->shared->lock;
+        ngx_spinlock(lock, ngx_pid, 1024);
+
         shm_block->peers = peers;
         shm_block->total_nreq = 0;
         shm_block->total_requests = 0;
@@ -510,10 +514,13 @@ ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
             shm_block->stats[i].last_req_id = 0;
             shm_block->stats[i].total_req = 0;
             shm_block->stats[i].fails = 0;
+            shm_block->stats[i].total_fails = 0;
             shm_block->stats[i].current_weight = peers->peer[i].weight;
 
             peers->peer[i].shared = &peers->shared->stats[i];
         }
+
+        ngx_spinlock_unlock(lock);
 
         return NGX_OK;
     }
@@ -903,6 +910,11 @@ ngx_http_upstream_get_jvm_route_peer(ngx_peer_connection_t *pc, void *data)
 
     jrp->peers->current = jrp->current;
 
+    /* "kill -HUP" will generate a new peers */
+    if (jrp->peers != jrp->peers->shared->peers) {
+        return NGX_OK;
+    }
+
     peer->shared->last_req_id = jrp->peers->shared->total_requests;
     ngx_http_upstream_jvm_route_update_nreq(jrp, 1, pc->log);
     peer->shared->total_req++;
@@ -924,6 +936,11 @@ ngx_http_upstream_free_jvm_route_peer(ngx_peer_connection_t *pc, void *data,
         jrp->current, state, pc->tries, pc->data);
 
     if (jrp->current == NGX_PEER_INVALID) {
+        return;
+    }
+
+    /* "kill -HUP" will generate a new peers */
+    if (jrp->peers != jrp->peers->shared->peers) {
         return;
     }
 
@@ -1237,7 +1254,7 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
 
     if (peers) {
         b->last = ngx_sprintf(b->last, 
-                "upstream %V: total_busy = %ui, "
+                "upstream %V: total_busy = %d, "
                 "total_requests = %ui, " 
                 "current_peer %d/%d\n\n", 
                 peers->name, shm_block->total_nreq,
