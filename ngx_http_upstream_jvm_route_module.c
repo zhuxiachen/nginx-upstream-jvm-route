@@ -38,6 +38,7 @@ typedef struct {
     ngx_uint_t                          last_req_id;
     ngx_uint_t                          fails;
     ngx_uint_t                          total_fails;
+    time_t                              accessed;
     ngx_int_t                           current_weight;
 } ngx_http_upstream_jvm_route_shared_t;
 
@@ -60,7 +61,6 @@ typedef struct {
     ngx_str_t                       name;
 
     ngx_int_t                       weight;
-    time_t                          accessed;
     ngx_uint_t                      max_fails;
     ngx_uint_t                      max_busy;
     time_t                          fail_timeout;
@@ -83,7 +83,7 @@ struct ngx_http_upstream_jvm_route_peers_s {
     /* for backup peers support, not really used yet */
     ngx_http_upstream_jvm_route_peers_t     *next;  
 
-    ngx_http_upstream_jvm_route_peer_t  peer[1];
+    ngx_http_upstream_jvm_route_peer_t       peer[1];
 };
 
 #define NGX_PEER_INVALID (~0UL)
@@ -515,6 +515,7 @@ ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
             shm_block->stats[i].total_req = 0;
             shm_block->stats[i].fails = 0;
             shm_block->stats[i].total_fails = 0;
+            shm_block->stats[i].accessed = 0;
             shm_block->stats[i].current_weight = peers->peer[i].weight;
 
             peers->peer[i].shared = &peers->shared->stats[i];
@@ -726,7 +727,7 @@ ngx_http_upstream_jvm_route_try_peer( ngx_http_upstream_jvm_route_peer_data_t *j
             return NGX_OK;
         }
 
-        if (ngx_time() - peer->accessed > peer->fail_timeout) {
+        if (ngx_time() - peer->shared->accessed > peer->fail_timeout) {
             peer->shared->fails = 0;
             return NGX_OK;
         }
@@ -851,13 +852,16 @@ ngx_http_upstream_jvm_route_update_nreq(ngx_http_upstream_jvm_route_peer_data_t 
     ngx_uint_t                          nreq;
     ngx_uint_t                          total_nreq;
 
-    nreq = (jrp->peers->peer[jrp->current].shared->nreq += delta);
-    total_nreq = (jrp->peers->shared->total_nreq += delta);
+    /* "kill -HUP" will generate a new peers */
+    if (jrp->peers == jrp->peers->shared->peers) {
+        nreq = (jrp->peers->peer[jrp->current].shared->nreq += delta);
+        total_nreq = (jrp->peers->shared->total_nreq += delta);
 
-    ngx_log_debug6(NGX_LOG_DEBUG_HTTP, log, 0,
-        "[upstream_jvm_route] nreq for peer %ui @ %p/%p now %d, total %d, delta %d",
-        jrp->current, jrp->peers, jrp->peers->peer[jrp->current].shared, nreq,
-        total_nreq, delta);
+        ngx_log_debug6(NGX_LOG_DEBUG_HTTP, log, 0,
+                "[upstream_jvm_route] nreq for peer %ui @ %p/%p now %d, total %d, delta %d",
+                jrp->current, jrp->peers, jrp->peers->peer[jrp->current].shared, nreq,
+                total_nreq, delta);
+    }
 }
 
 static ngx_int_t
@@ -912,6 +916,7 @@ ngx_http_upstream_get_jvm_route_peer(ngx_peer_connection_t *pc, void *data)
 
     /* "kill -HUP" will generate a new peers */
     if (jrp->peers != jrp->peers->shared->peers) {
+        ngx_spinlock_unlock(lock);
         return NGX_OK;
     }
 
@@ -939,14 +944,15 @@ ngx_http_upstream_free_jvm_route_peer(ngx_peer_connection_t *pc, void *data,
         return;
     }
 
-    /* "kill -HUP" will generate a new peers */
-    if (jrp->peers != jrp->peers->shared->peers) {
-        return;
-    }
-
     peer = &jrp->peers->peer[jrp->current];
     lock = &jrp->peers->shared->lock;
     ngx_spinlock(lock, ngx_pid, 1024);
+
+    /* "kill -HUP" will generate a new peers */
+    if (jrp->peers != jrp->peers->shared->peers) {
+        ngx_spinlock_unlock(lock);
+        return;
+    }
 
     ngx_http_upstream_jvm_route_update_nreq(jrp, -1, pc->log);
 
@@ -957,7 +963,7 @@ ngx_http_upstream_free_jvm_route_peer(ngx_peer_connection_t *pc, void *data,
     if (state & NGX_PEER_FAILED) {
         peer->shared->fails++;
         peer->shared->total_fails++;
-        peer->accessed = ngx_time();
+        peer->shared->accessed = ngx_time();
 
         if (peer->max_fails) {
             peer->shared->current_weight -= peer->weight / peer->max_fails;
@@ -1271,7 +1277,7 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
                 i + 1, &peer->name, &peer->srun_id, 
                 peer->down, sh->fails, peer->max_fails, sh->nreq, peer->max_busy,
                 sh->current_weight, peer->weight, 
-                sh->total_req, sh->last_req_id, sh->total_fails, ctime(&peer->accessed));
+                sh->total_req, sh->last_req_id, sh->total_fails, ctime(&sh->accessed));
         }
     }
     else {
