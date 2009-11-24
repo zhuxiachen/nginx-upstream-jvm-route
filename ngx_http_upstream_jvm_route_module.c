@@ -44,6 +44,7 @@ typedef struct {
 
 
 typedef struct {
+    ngx_uint_t                           generation;
     ngx_http_upstream_jvm_route_peers_t *peers; 
     ngx_uint_t                           total_nreq;
     ngx_uint_t                           total_requests;
@@ -124,6 +125,8 @@ static void
 ngx_http_upstream_jvm_route_save_session(ngx_peer_connection_t *pc, void *data);
 #endif
 
+static ngx_int_t ngx_http_upstream_jvm_route_init_module(ngx_cycle_t *cycle);
+
 static ngx_command_t  ngx_http_upstream_jvm_route_commands[] = {
 
     { ngx_string("jvm_route"),
@@ -163,18 +166,27 @@ ngx_module_t  ngx_http_upstream_jvm_route_module = {
     NGX_MODULE_V1,
     &ngx_http_upstream_jvm_route_module_ctx, /* module context */
     ngx_http_upstream_jvm_route_commands,    /* module directives */
-    NGX_HTTP_MODULE,                       /* module type */
-    NULL,                                  /* init master */
-    NULL,                                  /* init module */
-    NULL,                                  /* init process */
-    NULL,                                  /* init thread */
-    NULL,                                  /* exit thread */
-    NULL,                                  /* exit process */
-    NULL,                                  /* exit master */
+    NGX_HTTP_MODULE,                         /* module type */
+    NULL,                                    /* init master */
+    ngx_http_upstream_jvm_route_init_module, /* init module */
+    NULL,                                    /* init process */
+    NULL,                                    /* init thread */
+    NULL,                                    /* exit thread */
+    NULL,                                    /* exit process */
+    NULL,                                    /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
+static ngx_uint_t ngx_http_upstream_jvm_route_generation = 0;
+
 #define NGX_BITVECTOR_ELT_SIZE (sizeof(uintptr_t) * 8)
+
+static ngx_int_t
+ngx_http_upstream_jvm_route_init_module(ngx_cycle_t *cycle)
+{
+    ngx_http_upstream_jvm_route_generation++;
+    return NGX_OK;
+}
 
 static uintptr_t *
 ngx_bitvector_alloc(ngx_pool_t *pool, ngx_uint_t size, uintptr_t *small)
@@ -505,6 +517,7 @@ ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
         lock = &peers->shared->lock;
         ngx_spinlock(lock, ngx_pid, 1024);
 
+        shm_block->generation = ngx_http_upstream_jvm_route_generation + 1;
         shm_block->peers = peers;
         shm_block->total_nreq = 0;
         shm_block->total_requests = 0;
@@ -853,7 +866,8 @@ ngx_http_upstream_jvm_route_update_nreq(ngx_http_upstream_jvm_route_peer_data_t 
     ngx_uint_t                          total_nreq;
 
     /* "kill -HUP" will generate a new peers */
-    if (jrp->peers == jrp->peers->shared->peers) {
+    if (jrp->peers == jrp->peers->shared->peers && 
+            jrp->peers->shared->generation == ngx_http_upstream_jvm_route_generation) {
         nreq = (jrp->peers->peer[jrp->current].shared->nreq += delta);
         total_nreq = (jrp->peers->shared->total_nreq += delta);
 
@@ -915,7 +929,8 @@ ngx_http_upstream_get_jvm_route_peer(ngx_peer_connection_t *pc, void *data)
     jrp->peers->current = jrp->current;
 
     /* "kill -HUP" will generate a new peers */
-    if (jrp->peers != jrp->peers->shared->peers) {
+    if (jrp->peers != jrp->peers->shared->peers || 
+            jrp->peers->shared->generation != ngx_http_upstream_jvm_route_generation) {
         ngx_spinlock_unlock(lock);
         return NGX_OK;
     }
@@ -949,7 +964,8 @@ ngx_http_upstream_free_jvm_route_peer(ngx_peer_connection_t *pc, void *data,
     ngx_spinlock(lock, ngx_pid, 1024);
 
     /* "kill -HUP" will generate a new peers */
-    if (jrp->peers != jrp->peers->shared->peers) {
+    if (jrp->peers != jrp->peers->shared->peers || 
+            jrp->peers->shared->generation != ngx_http_upstream_jvm_route_generation) {
         ngx_spinlock_unlock(lock);
         return;
     }
@@ -1262,10 +1278,12 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
         b->last = ngx_sprintf(b->last, 
                 "upstream %V: total_busy = %d, "
                 "total_requests = %ui, " 
-                "current_peer %d/%d\n\n", 
+                "current_peer: %d/%d, " 
+                "generation: %d\n\n", 
                 peers->name, shm_block->total_nreq,
                 shm_block->total_requests,
-                peers->current + 1, peers->number);
+                peers->current + 1, peers->number,
+                shm_block->generation);
         for (i = 0; i < peers->number; i++) {
             ngx_http_upstream_jvm_route_peer_t *peer = &peers->peer[i];
             ngx_http_upstream_jvm_route_shared_t *sh = peer->shared;
