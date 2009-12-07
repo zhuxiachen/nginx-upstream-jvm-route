@@ -15,6 +15,7 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#define SHM_NAME_LEN 256
 
 typedef struct {
     ngx_array_t                     *values;
@@ -80,6 +81,7 @@ struct ngx_http_upstream_jvm_route_peers_s {
     ngx_uint_t                               current;
     ngx_uint_t                               number;
     ngx_str_t                               *name;
+    ngx_str_t                                shm_name;
     
     /* for backup peers support, not really used yet */
     ngx_http_upstream_jvm_route_peers_t     *next;  
@@ -112,7 +114,7 @@ static char *ngx_http_upstream_jvm_route(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static char *ngx_http_upstream_jvm_route_set_status(ngx_conf_t *cf, 
         ngx_command_t *cmd, void *conf);
-
+ 
 static ngx_int_t
 ngx_http_upstream_get_jvm_route_peer(ngx_peer_connection_t *pc, void *data);
 static void
@@ -547,6 +549,8 @@ ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
 static ngx_int_t
 ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us)
 {
+    u_char                                 *last;
+    ngx_str_t                              *shm_name;
     ngx_uint_t                              shm_size;
     ngx_shm_zone_t                         *shm_zone;
     ngx_http_upstream_jvm_route_peers_t    *peers;
@@ -563,15 +567,25 @@ ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *u
     if (peers == NULL) {
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                 "[upstream_jvm_route] can't find the peers!");
+        return NGX_ERROR;
     }
     peers->current = peers->number - 1;
+    shm_name = &peers->shm_name;
+    shm_name->data = ngx_palloc(cf->pool, SHM_NAME_LEN);
+    if (shm_name->data == NULL) {
+        return NGX_ERROR;
+    }
+    /*add the share memory with the generation*/
+    last = ngx_snprintf(shm_name->data, SHM_NAME_LEN, "%V_%ui", peers->name, 
+	    ngx_http_upstream_jvm_route_generation + 1);
+    shm_name->len = last - shm_name->data;
 
     shm_size = sizeof(ngx_http_upstream_jvm_route_shm_block_t) +
             (peers->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t);
     
-    shm_size = ngx_align(shm_size, ngx_pagesize) + 2 * ngx_pagesize;
+    shm_size = ngx_align(shm_size, ngx_pagesize) + ngx_pagesize;
 
-    shm_zone = ngx_shared_memory_add(cf, peers->name, shm_size, 
+    shm_zone = ngx_shared_memory_add(cf, shm_name, shm_size, 
             &ngx_http_upstream_jvm_route_module);
     if (shm_zone == NULL) {
         return NGX_ERROR;
@@ -1214,16 +1228,17 @@ ngx_shared_memory_find(ngx_str_t *name, void *tag)
 static ngx_int_t 
 ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
 {
+    u_char            *last;
     ngx_int_t          rc;
     ngx_uint_t         i;
     ngx_buf_t         *b;
+    ngx_str_t          shm_name;
     ngx_chain_t        out;
     ngx_atomic_t      *lock;
     ngx_shm_zone_t    *shm_zone;
     ngx_http_upstream_jvm_route_shm_block_t *shm_block;
     ngx_http_upstream_jvm_route_peers_t     *peers;
     ngx_http_upstream_jvm_route_loc_conf_t  *ujrlcf;
-
 
     ujrlcf = ngx_http_get_module_loc_conf(r, ngx_http_upstream_jvm_route_module);
 
@@ -1250,12 +1265,20 @@ ngx_http_upstream_jvm_route_status_handler(ngx_http_request_t *r)
         }
     }
 
-    shm_zone = ngx_shared_memory_find(&ujrlcf->shm_name, &ngx_http_upstream_jvm_route_module);
+    shm_name.data = ngx_palloc(r->pool, SHM_NAME_LEN);
+    if (shm_name.data == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    last = ngx_snprintf(shm_name.data, SHM_NAME_LEN, "%V_%ui", 
+	    &ujrlcf->shm_name, ngx_http_upstream_jvm_route_generation);
+    shm_name.len = last - shm_name.data;
+
+    shm_zone = ngx_shared_memory_find(&shm_name, &ngx_http_upstream_jvm_route_module);
 
     if (shm_zone == NULL || shm_zone->data == NULL) {
 
         ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                "can not find the shared memory zone \"%V\" ", &ujrlcf->shm_name);
+                "can not find the shared memory zone \"%V\" ", &shm_name);
 
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
