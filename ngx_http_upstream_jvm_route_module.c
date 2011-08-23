@@ -554,10 +554,6 @@ ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *u
     ngx_uint_t                              shm_size;
     ngx_shm_zone_t                         *shm_zone;
     ngx_http_upstream_jvm_route_peers_t    *peers;
-    ngx_http_upstream_jvm_route_srv_conf_t *ujrscf;
-
-    ujrscf = ngx_http_conf_upstream_srv_conf(us,
-                                          ngx_http_upstream_jvm_route_module);
 
     if (ngx_http_upstream_init_jvm_route_rr(cf, us) != NGX_OK) {
         return NGX_ERROR;
@@ -876,19 +872,25 @@ static void
 ngx_http_upstream_jvm_route_update_nreq(ngx_http_upstream_jvm_route_peer_data_t *jrp, 
         int delta, ngx_log_t *log)
 {
-    ngx_uint_t                          nreq;
-    ngx_uint_t                          total_nreq;
-
     /* "kill -HUP" will generate a new peers */
     if (jrp->peers == jrp->peers->shared->peers && 
             jrp->peers->shared->generation == ngx_http_upstream_jvm_route_generation) {
-        nreq = (jrp->peers->peer[jrp->current].shared->nreq += delta);
-        total_nreq = (jrp->peers->shared->total_nreq += delta);
+
+        jrp->peers->peer[jrp->current].shared->nreq += delta;
+        jrp->peers->shared->total_nreq += delta;
+
+#if NGX_DEBUG
+        ngx_uint_t                          nreq;
+        ngx_uint_t                          total_nreq;
+
+        nreq = jrp->peers->peer[jrp->current].shared->nreq;
+        total_nreq = jrp->peers->shared->total_nreq;
 
         ngx_log_debug6(NGX_LOG_DEBUG_HTTP, log, 0,
                 "[upstream_jvm_route] nreq for peer %ui @ %p/%p now %d, total %d, delta %d",
                 jrp->current, jrp->peers, jrp->peers->peer[jrp->current].shared, nreq,
                 total_nreq, delta);
+#endif
     }
 }
 
