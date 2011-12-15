@@ -554,6 +554,7 @@ ngx_http_upstream_jvm_route_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
 
     ngx_log_error(NGX_LOG_EMERG, shm_zone->shm.log, 0,
             "[upstream_jvm_route] can't find the peers!");
+
     return NGX_ERROR;
 }
 
@@ -593,11 +594,20 @@ ngx_http_upstream_init_jvm_route(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *u
     shm_size = sizeof(ngx_http_upstream_jvm_route_shm_block_t) +
             (peers->number - 1) * sizeof(ngx_http_upstream_jvm_route_shared_t);
     
-    shm_size = ngx_align(shm_size, ngx_pagesize) + ngx_pagesize;
+    shm_size = ngx_align(shm_size, ngx_pagesize) + 8 * ngx_pagesize;
 
     shm_zone = ngx_shared_memory_add(cf, shm_name, shm_size, 
             &ngx_http_upstream_jvm_route_module);
     if (shm_zone == NULL) {
+        return NGX_ERROR;
+    }
+
+    if (shm_zone->data) {
+
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                   "[upstream_jvm_route] shm_zone: \"%V\" is already built.", 
+                   peers->name);
+
         return NGX_ERROR;
     }
 
