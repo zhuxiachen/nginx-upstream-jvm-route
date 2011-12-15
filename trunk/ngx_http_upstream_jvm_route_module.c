@@ -19,8 +19,7 @@
 
 
 typedef struct {
-    ngx_array_t                     *values;
-    ngx_array_t                     *lengths;
+    ngx_http_complex_value_t         cookie;
 
     ngx_str_t                        session_cookie;
     ngx_str_t                        session_url;
@@ -625,7 +624,7 @@ ngx_http_upstream_jvm_route_get_session_value(ngx_http_request_t *r,
     u_char    *start;
 
     /* session in cookie */
-    if (ngx_http_script_run(r, val, us->lengths, 0, us->values) == NULL) {
+    if (ngx_http_complex_value(r, &us->cookie, val) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                 "[upstream_jvm_route] compiles the session in cookie error!");
         return NGX_ERROR;
@@ -1128,8 +1127,7 @@ ngx_http_upstream_jvm_route(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t                              *value, *val_cookie;
     ngx_uint_t                              i, len;
-    ngx_array_t                            *vars_lengths, *vars_values;
-    ngx_http_script_compile_t               sc;
+    ngx_http_compile_complex_value_t        ccv;
     ngx_http_upstream_srv_conf_t           *uscf;
     ngx_http_upstream_jvm_route_srv_conf_t *ujrscf;
 
@@ -1175,19 +1173,13 @@ ngx_http_upstream_jvm_route(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    ngx_memzero(&sc, sizeof(ngx_http_script_compile_t));
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
 
-    vars_lengths = NULL;
-    vars_values = NULL;
+    ccv.cf = cf;
+    ccv.value = val_cookie;
+    ccv.complex_value = &ujrscf->cookie;
 
-    sc.cf = cf;
-    sc.source = val_cookie;
-    sc.lengths = &vars_lengths;
-    sc.values = &vars_values;
-    sc.complete_lengths = 1;
-    sc.complete_values = 1;
-
-    if (ngx_http_script_compile(&sc) != NGX_OK) {
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
 
@@ -1196,9 +1188,6 @@ ngx_http_upstream_jvm_route(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             ujrscf->reverse = 1;
         }
     }
-
-    ujrscf->values = vars_values->elts;
-    ujrscf->lengths = vars_lengths->elts;
 
     uscf->peer.init_upstream = ngx_http_upstream_init_jvm_route;
 
